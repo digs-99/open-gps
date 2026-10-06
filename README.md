@@ -48,6 +48,9 @@ All parts share one I2C bus and the default addresses don't clash, so **no jumpe
 | Qwiic Twist | 0x3F |
 | NEO-M9N GPS | 0x42 |
 
+> [!NOTE]
+> **Alternative build:** the firmware also runs on an Adafruit ESP32-S3 Reverse TFT Feather with the Ultimate GPS FeatherWing. Its three buttons replace the dial. Choose that board when compiling; the parts above and their build are unchanged. Setup guide: [firmware/FEATHER.md](firmware/FEATHER.md).
+
 ---
 
 ## Quick start
@@ -191,9 +194,9 @@ For an agent without an interactive terminal, this sends commands and captures 8
 make -C firmware/test
 ```
 
-It needs `g++` or `clang++` (C++17). It plays a scripted round (drives, putts, hole-out, cancel, undo, a RESET mid-shot, a no-fix save, finishing, deleting a round, exporting and power-off), and it flags any text or graphics drawn off the 128×64 screen.
+It needs `g++` or `clang++` (C++17). It runs twice, once for the SparkFun parts and once for the [Feather build](firmware/README.md#adafruit-feather-build). Each run plays a scripted round (drives, putts, hole-out, cancel, undo, a RESET mid-shot, a no-fix save, finishing, deleting a round, exporting and power-off), and it flags any text or graphics drawn off the 128×64 screen.
 
-**Verify:** the last line is `0 failures`. AddressSanitizer hangs at startup on recent macOS, so on macOS the Makefile uses UBSan only. Linux uses both.
+**Verify:** both runs end with `0 failures`. AddressSanitizer hangs at startup on recent macOS, so on macOS the Makefile uses UBSan only. Linux uses both.
 
 ### 6. Print and assemble the case
 

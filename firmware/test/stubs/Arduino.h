@@ -15,9 +15,15 @@ inline uint32_t millis(){ return g_millis; }
 inline void delay(uint32_t ms){ g_millis += ms; }
 #define constrain(x,a,b) ((x)<(a)?(a):((x)>(b)?(b):(x)))
 #define OUTPUT 1
+#define INPUT_PULLUP 2
+#define INPUT_PULLDOWN 3
 #define HIGH 1
 #define LOW 0
-inline void pinMode(int,int){} inline void digitalWrite(int,int){}
+extern int g_pins[64];  // levels read by digitalRead(), set by the sim
+inline void pinMode(int,int){} inline void digitalWrite(int,int){} inline int digitalRead(int p){ return g_pins[p]; }
+extern uint32_t g_led;  // last NeoPixel colour, 0xRRGGBB
+inline void rgbLedWrite(int,uint8_t r,uint8_t g,uint8_t b){ g_led=((uint32_t)r<<16)|(g<<8)|b; }
+#define pgm_read_byte(p) (*(const uint8_t*)(p))
 inline size_t strlcpy(char* d,const char* s,size_t n){ size_t l=strlen(s); if(n){ size_t c=l<n-1?l:n-1; memcpy(d,s,c); d[c]=0;} return l; }
 inline size_t strlcat(char* d,const char* s,size_t n){ size_t l=strlen(d); return l+strlcpy(d+l,s,n>l?n-l:0); }
 class String { public: std::string s; String(){} String(const char* c):s(c){} String(const std::string& x):s(x){}
@@ -43,3 +49,12 @@ class Print { public: std::string out;
 class Stream : public Print { public: std::string in; int available(){ return (int)in.size(); } int read(){ int c=in[0]; in.erase(0,1); return c; }
   void begin(int){} };
 extern Stream Serial;
+#define SERIAL_8N1 0
+// UART: feed() runs before every available() so the sim can stream sentences in as time passes.
+class HardwareSerial : public Stream { public: uint32_t baud=0; void (*feed)()=nullptr;
+  void begin(uint32_t b,int=0,int=-1,int=-1){ baud=b; } void end(){ baud=0; } void flush(){} void setRxBufferSize(size_t){}
+  int available(){ if(feed) feed(); return Stream::available(); } };
+extern HardwareSerial Serial1;
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S3_REVTFT
+#include "pins_arduino.h"
+#endif

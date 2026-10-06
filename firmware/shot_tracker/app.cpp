@@ -1,10 +1,12 @@
 // =====================================================================
 //  Golf Shot Tracker firmware - v0.1
-//  SparkFun Thing Plus ESP32-S3 + NEO-M9N GPS + Qwiic OLED 1.3" + Qwiic Twist
+//  SparkFun Thing Plus ESP32-S3 + NEO-M9N GPS + Qwiic OLED 1.3" + Qwiic Twist, or
+//  Adafruit ESP32-S3 Reverse TFT Feather + Ultimate GPS FeatherWing (see config.h)
 //
 //  Dial:  turn = choose club / move in menus
 //         click = select / mark position
 //         hold  = open menu (hold again or pick "Back" to close)
+//  Feather buttons: D0/D2 = turn, D1 = click, hold D1 = hold
 //  Shot:  pick club -> click at the ball (start marked) -> walk to the ball ->
 //         click (landing marked, distance shown). Putter = one click, no landing.
 //         "Hole out" (last slot on the dial, after the putter) finishes the hole.
@@ -12,13 +14,12 @@
 // =====================================================================
 #include <Arduino.h>
 #include <Wire.h>
-#include <esp_sleep.h>
-#include <driver/gpio.h>
 #include <time.h>
 #include <SparkFun_MAX1704x_Fuel_Gauge_Arduino_Library.h>
 
 #include "config.h"
 #include "model.h"
+#include "power.h"
 #include "storage.h"
 #include "gps.h"
 #include "input.h"
@@ -306,15 +307,8 @@ void undoLast() {
   delay(1500);
   input.setColor(0, 0, 0);
   ui.power(false);
-  // Cut the Qwiic rail (GPS, OLED, Twist) and hold it low through deep sleep.
-  // Tip: cut jumper JP2 on the Thing Plus so the rail defaults OFF and this
-  // pin isn't fighting its 10k pull-up (~330 uA) all night.
-  digitalWrite(PIN_QWIIC_EN, LOW);
-  gpio_hold_en((gpio_num_t)PIN_QWIIC_EN);
-  gpio_deep_sleep_hold_en();
-  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);  // only RESET (or the EN switch) wakes us
-  esp_deep_sleep_start();
-  while (true) {}
+  gps.standby();
+  power::sleep();
 }
 
 void doAction(Action a) {
@@ -626,7 +620,7 @@ void render() {
       drawHeader("GPS status");
       const Gps::Fix& f = gps.fix();
       ui.small();
-      if (!gps.present()) { ui.center(24, "GPS not detected"); ui.center(34, "check Qwiic cable"); break; }
+      if (!gps.present()) { ui.center(24, "GPS not detected"); ui.center(34, BOARD_FEATHER_REVTFT ? "check GPS wing" : "check Qwiic cable"); break; }
       snprintf(buf, sizeof buf, "fix %u  sats %u  %s", f.fixType, f.siv, gps.hasFix() ? "OK" : "--");
       ui.text(0, 13, buf);
       snprintf(buf, sizeof buf, "acc +/- %.1f m", f.hacc_mm / 1000.0f);
@@ -715,12 +709,8 @@ void serialPoll() {
 // setup / loop
 // ---------------------------------------------------------------------------
 void setup() {
-  // Power the Qwiic rail (it may still be held low from the last power-off).
-  gpio_hold_dis((gpio_num_t)PIN_QWIIC_EN);
-  gpio_deep_sleep_hold_dis();
-  pinMode(PIN_QWIIC_EN, OUTPUT);
-  digitalWrite(PIN_QWIIC_EN, HIGH);
-  delay(150);
+  // Power the peripheral rails (they may still be held low from the last power-off).
+  power::begin();
 
   Serial.begin(115200);
   Wire.begin(PIN_SDA, PIN_SCL);
@@ -732,9 +722,13 @@ void setup() {
   input.begin(Wire);
   fuelOk = fuel.begin(Wire);
   bool fsOk = storage::begin();
+#if BOARD_FEATHER_REVTFT
+  bool gpsOk = gps.begin(Serial1);
+  Serial.printf("tft=%d buttons=%d gps=%d fuel=%d fs=%d\n", ui.present(), input.present(), gpsOk, fuelOk, fsOk);
+#else
   bool gpsOk = gps.begin(Wire);
-
   Serial.printf("oled=%d twist=%d gps=%d fuel=%d fs=%d\n", ui.present(), input.present(), gpsOk, fuelOk, fsOk);
+#endif
 
   uint32_t cur = storage::currentRoundId();
   if (cur && storage::load(cur, round_) && round_.active()) {

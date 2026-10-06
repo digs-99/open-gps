@@ -4,8 +4,16 @@
 #include <SparkFun_Qwiic_OLED.h>
 #include <res/qw_fnt_5x7.h>
 #include <res/qw_fnt_8x16.h>
+#include "config.h"
 
-// Thin layer over the 1.3" 128x64 Qwiic OLED.
+#if BOARD_FEATHER_REVTFT
+#include "tft.h"
+using Display = TftDisplay;  // a 128x64 frame scaled onto the Feather's TFT
+#else
+using Display = Qwiic1in3OLED;
+#endif
+
+// Thin layer over the 1.3" 128x64 Qwiic OLED (or the Reverse TFT Feather's screen, see tft.h).
 // Fonts: 5x7 (8 px rows, 21 chars), 8x16 (16 chars). Big numbers use bigText() below.
 class Ui {
  public:
@@ -93,6 +101,6 @@ class Ui {
   }
 
  private:
-  Qwiic1in3OLED oled_;
+  Display oled_;
   bool ok_ = false;
 };

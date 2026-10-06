@@ -1,7 +1,6 @@
 #pragma once
 #include <Arduino.h>
 #include <Wire.h>
-#include <SparkFun_Qwiic_Twist_Arduino_Library.h>
 #include "config.h"
 
 struct InputEvents {
@@ -10,6 +9,11 @@ struct InputEvents {
   bool longPress = false;// fired once when held past LONG_PRESS_MS
   bool any() const { return turn || click || longPress; }
 };
+
+#if BOARD_FEATHER_REVTFT
+#include "buttons.h"  // the Feather's three buttons and NeoPixel stand in for the Twist
+#else
+#include <SparkFun_Qwiic_Twist_Arduino_Library.h>
 
 // Polls the Qwiic Twist. Click vs long-press is timed here rather than using the
 // Twist's latched click flag, so a long press never also produces a click.
@@ -55,3 +59,4 @@ class Input {
   bool wasDown_ = false, longFired_ = false;
   uint32_t color_ = 0xFFFFFFFF;
 };
+#endif

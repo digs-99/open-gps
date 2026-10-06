@@ -2,6 +2,8 @@
 
 Arduino firmware for the SparkFun Thing Plus ESP32-S3 with the NEO-M9N GPS, the Qwiic OLED 1.3" and the Qwiic Twist.
 
+The same firmware also builds for an **Adafruit ESP32-S3 Reverse TFT Feather with the Ultimate GPS FeatherWing**. Its three buttons replace the dial. The board you compile for picks the hardware, so nothing changes for the SparkFun build. See [Adafruit Feather build](#adafruit-feather-build).
+
 ## Controls
 
 There's one control, the dial:
@@ -172,15 +174,62 @@ Normally the ESP32-S3 resets itself into upload mode over USB. If the firmware c
 
 | File | Contents |
 |---|---|
-| `config.h` | Clubs, units, timings, GPS averaging |
+| `config.h` | Board selection and pins, clubs, units, timings, GPS averaging |
 | `model.h` | Round/shot structs and distance maths |
 | `storage.h` | LittleFS persistence and GeoJSON/CSV export |
-| `gps.h` | GNSS wrapper and averaged marking |
+| `gps.h` | Averaged marking, plus the NEO-M9N receiver |
 | `input.h` | Dial click/long-press handling |
 | `ui.h` | OLED helpers |
+| `power.h` | Peripheral power rails and deep sleep |
+| `gps_mtk.h` | Feather only: Ultimate GPS FeatherWing receiver (NMEA) |
+| `buttons.h` | Feather only: three buttons and the NeoPixel standing in for the Twist |
+| `tft.h` | Feather only: the OLED drawing calls `ui.h` uses, rendered on the TFT |
 | `app.cpp` | State machine, screens and serial commands |
 
-**Host simulation:** `make -C firmware/test` builds the real `app.cpp` against stubbed hardware with sanitizers. It plays a scripted round: drives, putts, hole-out, cancel, undo, a RESET mid-shot, a no-fix save, going to hole 18, finishing, exporting and power-off. It asserts the results and checks that no text or graphics run off the 128×64 display.
+**Host simulation:** `make -C firmware/test` builds the real `app.cpp` against stubbed hardware with sanitizers, once for each board. It plays a scripted round: drives, putts, hole-out, cancel, undo, a RESET mid-shot, a no-fix save, going to hole 18, finishing, exporting and power-off. It asserts the results and checks that no text or graphics run off the 128×64 display. The Feather run plays the same round with button presses and NMEA sentences. It also checks the GPS setup commands, button auto-repeat, the TFT redraws and power-off, and prints each screen as read back off the simulated panel.
+
+## Adafruit Feather build
+
+An alternative build on Adafruit parts. The screens, the round logic, storage, export and the serial commands are identical; only the hardware layer differs. There's no enclosure for it yet.
+
+**Setting one up? Follow the step-by-step guide in [FEATHER.md](FEATHER.md).** This section is the reference behind it.
+
+| Qty | Part | Notes |
+|---|---|---|
+| 1 | Adafruit ESP32-S3 Reverse TFT Feather (4 MB flash, 2 MB PSRAM, product 5691) | Main board: 240×135 TFT, buttons D0/D1/D2, MAX17048 fuel gauge, NeoPixel |
+| 1 | Adafruit Ultimate GPS FeatherWing (product 3133) | MTK3339 over UART. A CR1220 coin cell makes later fixes much faster. |
+| 1 | LiPo battery, JST-PH | The 2 Ah cell from the main BoM fits |
+| — | Optional: uFL-to-SMA adapter and the BoM's SMA antenna | See *Antenna* below |
+
+Stack the Feather on the FeatherWing with female headers, or put both on a FeatherWing Doubler. The GPS uses the Feather's TX/RX pins. Nothing else needs wiring.
+
+**Controls.** The buttons stand in for the dial:
+
+| Button | Does | Dial equivalent |
+|---|---|---|
+| D0 | Previous club / move up (hold to repeat) | Turn left |
+| D1 | Select, or mark at the ball | Click |
+| Hold D1 (0.7 s) | Menu | Hold |
+| D2 | Next club / move down (hold to repeat) | Turn right |
+
+The onboard NeoPixel shows the same colours as the dial LED. If up and down feel backwards with your screen orientation, swap `PIN_BTN_UP` and `PIN_BTN_DOWN` in `config.h`. Set `TFT_ROTATION` to `1` to turn the screen upside down. D0 is also BOOT, so don't hold it while pressing RESET unless you mean to enter the bootloader.
+
+**Screen.** The UI is drawn as the same 128×64 frame, with the same fonts, and scaled up to fill the 240×135 TFT. It looks like the OLED, just larger. Change `TFT_FG`/`TFT_BG` in `config.h` for other colours.
+
+**GPS.** At boot the firmware switches the module to 57600 baud and 4 fixes a second. NMEA doesn't report position accuracy, so accuracy is estimated as HDOP × 3 m (`GPS_HDOP_UERE_MM`). With the default `GPS_MAX_GOOD_HACC_MM`, fixes with an HDOP worse than about 2.7 are left out of a mark.
+
+**Antenna.** The FeatherWing's patch antenna has to see the sky. If the Feather is stacked directly on top of it, use an external active antenna on the wing's uFL connector. The magnetic SMA antenna from the main BoM works through a uFL-to-SMA adapter, and the module switches to it automatically.
+
+**Power off** saves the round, puts the GPS module in standby, cuts the TFT, STEMMA QT and NeoPixel power, and deep-sleeps. RESET wakes it. The FeatherWing still draws a small standby current from the battery. For a hard off, wire a slide switch between the Feather's **EN** pin and **GND**.
+
+**Building.** Choose *Adafruit Feather ESP32-S3 Reverse TFT* as the board, with the same *USB CDC On Boot* and *Partition Scheme* settings as the Thing Plus. In addition to the SparkFun libraries above, install **Adafruit GPS Library** and **Adafruit ST7735 and ST7789 Library**; the Library Manager adds Adafruit GFX and BusIO with it. The Qwiic OLED library is still needed for its fonts. The u-blox and Twist libraries aren't used in this build.
+
+```
+arduino-cli lib install "Adafruit GPS Library" "Adafruit ST7735 and ST7789 Library"
+arduino-cli compile -b "esp32:esp32:adafruit_feather_esp32s3_reversetft:CDCOnBoot=cdc,PartitionScheme=default" firmware/shot_tracker
+```
+
+At boot the serial monitor prints `tft=1 buttons=1 gps=1 fuel=1 fs=1`. `gps=0` means no NMEA arrived within 1.5 s. Check that the wing is seated, and that the coin cell isn't holding the module in a state other than 9600 or 57600 baud. Known-good versions: Adafruit GPS Library 1.9.0, Adafruit ST7735 and ST7789 Library 1.11.0, Adafruit GFX Library 1.12.6.
 
 ## Not in v0.1
 
